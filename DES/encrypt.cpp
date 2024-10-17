@@ -138,15 +138,13 @@ int p[] = {
 };
 
 
-//tested
-uint64_t applyIp(uint64_t in){
+uint64_t applyInitP(uint64_t in){
     uint64_t res=0;
     for(int i=0;i<64;++i)
         res|=(uint64_t)(in>>(64-ip[i])&1)<<(63-i);
     return res;
 }
 
-//tested
 uint64_t applyPc1(uint64_t in) {
     uint64_t res=0;
     for(int i=0;i<56;++i) {
@@ -155,7 +153,6 @@ uint64_t applyPc1(uint64_t in) {
     return res;
 }
 
-//tested
 uint32_t* split(uint64_t in, int size) {
     static uint32_t arr[2];
     uint64_t mask_1 = (size == 56) ? 0xfffffff0000000 : 0xffffffff00000000;
@@ -165,11 +162,77 @@ uint32_t* split(uint64_t in, int size) {
     return arr;
 }
 
+uint32_t circularShift(uint32_t in, int shift_amount) {
+    uint32_t res = ((in << shift_amount) &  0xFFFFFFF) | (in >> (28 - shift_amount));
+    return res;
+}
 
+uint64_t concatKey(uint32_t c, uint32_t d) {
+    uint64_t res = 0x0;
+    res |= ((uint64_t)c) << 28;
+    res |= (uint64_t)d;
+    return res;
+}
+
+uint64_t applyPc2(uint64_t in) {
+    uint64_t res= 0;
+    for(int i=0;i<48;++i)
+        res |= (uint64_t)(in>>(56-pc_2[i])&1)<<(47-i);
+    return res;
+}
+
+uint64_t expandRi(uint32_t in) {
+    uint64_t res = 0;
+    for(int i = 0; i < 48; i++)
+        res |= (uint64_t)(in >> (32-expansion[i])&1)<<(47-i);
+    return res;
+}
+
+uint64_t sBoxSubstitute(uint32_t in, int i) {
+    int row = (in & 0x1);
+    row |= (in & 0x20) >> 4;
+    // cout << "row: " << row << endl;
+    int col = (in & 0x1e) >> 1;
+    // cout << "col: " << col << endl;
+    // cout << sbox[i][row][col] << endl;
+    // cout << endl;
+    return  uint64_t(sbox[i][row][col]);
+}
+
+uint32_t applyP(uint32_t in) {
+    uint32_t res = 0;
+    for(int i = 0; i < 32; i++) {
+        res |= (uint32_t)(in >> (32-p[i])&1)<<(31-i);
+    }
+    return res;
+}
+
+uint32_t processRi(uint32_t ri, uint32_t li, uint64_t ki) {
+
+    uint32_t res = 0;
+    uint64_t expanded_ri = expandRi(ri);
+    uint64_t k_xor_r = expanded_ri^ki;
+    uint32_t s_boxed = 0;
+    for(int i =0; i<8; i++) {
+        uint32_t bi = k_xor_r >> (7-i)*6;
+        s_boxed |= sBoxSubstitute(bi, i) << (7-i)*4;
+    }
+    // cout << "s_boxed: " << decimal32ToBinary(s_boxed) << endl;
+    res = applyP(s_boxed) ^ li;
+    return res;
+}
+
+uint64_t applyInvP(uint64_t in) {
+    uint64_t res = 0;
+    for(int i = 0; i < 64; i++) {
+        res |= (uint64_t)(in >> (64-ip_inverse[i])&1)<<(63-i);
+    }
+    return res;
+}
 
 uint64_t encrypt(uint64_t plain, uint64_t key) {
     uint64_t ciphered = 0;
-    plain = applyIp(plain);
+    plain = applyInitP(plain);
     key = applyPc1(key);
 
     //splitting the key into c0 and d0
@@ -179,13 +242,37 @@ uint64_t encrypt(uint64_t plain, uint64_t key) {
 
     //splitting plain text into l0 and r0
     splitted = split(plain, 64);
-    uint32_t l0 = splitted[0], r0 = splitted[1];
-    
+    uint32_t li = splitted[0], ri = splitted[1]; //l0, r0
+
+    for(int i = 0; i<16; i++) {
+        uint32_t ci = circularShift(c0, shift_amount[i]), di = circularShift(d0, shift_amount[i]);
+        uint64_t ki = applyPc2(concatKey(ci, di));
+
+        // cout << "c" << i+1 << " = " << decimal32ToBinary(ci) << endl;
+        // cout << "d" << i+1 << " = " << decimal32ToBinary(di) << endl;
+        // cout << "concated: " << decimal64ToBinary(concatKey(ci, di))) << endl;
+        // cout << "permuated: " << decimal64ToBinary(ki) << endl;
+        // cout << endl;
+
+        uint32_t tmp_l = li;
+        li = ri;
+        ri = processRi(ri, tmp_l, ki);
+        // cout << "r" << i+1 << ": " << decimal32ToBinary(ri) << endl;
+
+        if(i == 15) {
+            // cout << "l16: " << decimal32ToBinary(li) << "\nr16: " << decimal32ToBinary(ri) << endl;
+            ciphered |= (uint64_t)(li);
+            ciphered |= ((uint64_t)(ri) << 32);
+            ciphered = applyInvP(ciphered);
+            // cout << "ciphered: " << decimal64ToBinary(ciphered) << endl;
+        }
+    }
     return ciphered;
 
 }
 
 int main() {
     uint64_t plain = 0x123456789ABCDEF , key = 0x133457799BBCDFF1;
-    encrypt(plain, key);
+    cout << "plain: " << plain << endl;
+    cout << "encrypted: " << encrypt(plain, key);
 }
