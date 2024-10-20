@@ -230,94 +230,40 @@ uint64_t applyInvP(uint64_t in) {
     return res;
 }
 
-uint64_t encrypt(uint64_t plain, uint64_t key) {
+uint64_t encrypt_decrypt(uint64_t plain, uint64_t key, bool encrypt) {
     uint64_t ciphered = 0;
     plain = applyInitP(plain);
     key = applyPc1(key);
 
-    //splitting the key into c0 and d0
     uint32_t* splitted = split(key, 56);
     uint32_t c0 = splitted[0], d0 = splitted[1];
 
-
-    //splitting plain text into l0 and r0
     splitted = split(plain, 64);
-    uint32_t li = splitted[0], ri = splitted[1]; //l0, r0
+    uint32_t li = splitted[0], ri = splitted[1];
 
     for(int i = 0; i<16; i++) {
-        uint32_t ci = circularShift(c0, shift_amount[i]), di = circularShift(d0, shift_amount[i]);
+        int index = encrypt? i : 15-i;
+        uint32_t ci = circularShift(c0, shift_amount[index]), di = circularShift(d0, shift_amount[index]);
         uint64_t ki = applyPc2(concatKey(ci, di));
-
-        // cout << "c" << i+1 << " = " << decimal32ToBinary(ci) << endl;
-        // cout << "d" << i+1 << " = " << decimal32ToBinary(di) << endl;
-        // cout << "concated: " << decimal64ToBinary(concatKey(ci, di))) << endl;
-        // cout << "permuated: " << decimal64ToBinary(ki) << endl;
-        // cout << endl;
 
         uint32_t tmp_l = li;
         li = ri;
         ri = processRi(ri, tmp_l, ki);
-        // cout << "r" << i+1 << ": " << decimal32ToBinary(ri) << endl;
-
-        if(i == 15) {
-            // cout << "l16: " << decimal32ToBinary(li) << "\nr16: " << decimal32ToBinary(ri) << endl;
-            ciphered |= (uint64_t)(li);
-            ciphered |= ((uint64_t)(ri) << 32);
-            ciphered = applyInvP(ciphered);
-            // cout << "ciphered: " << decimal64ToBinary(ciphered) << endl;
-        }
     }
+
+    ciphered |= (uint64_t)(li);
+    ciphered |= ((uint64_t)(ri) << 32);
+    ciphered = applyInvP(ciphered);
+
     return ciphered;
-
-}
-
-uint64_t decrypt(uint64_t ciphered, uint64_t key) {
-    uint64_t plain = 0;
-    ciphered = applyInitP(ciphered);
-    key = applyPc1(key);
-
-    //splitting the key into c0 and d0
-    uint32_t* splitted = split(key, 56);
-    uint32_t c0 = splitted[0], d0 = splitted[1];
-
-
-    //splitting plain text into l0 and r0
-    splitted = split(ciphered, 64);
-    uint32_t li = splitted[1], ri = splitted[0]; //l0, r0
-
-    for(int i = 15; i>=0; i--) {
-        uint32_t ci = circularShift(c0, shift_amount[i]), di = circularShift(d0, shift_amount[i]);
-        uint64_t ki = applyPc2(concatKey(ci, di));
-
-        // cout << "c" << i+1 << " = " << decimal32ToBinary(ci) << endl;
-        // cout << "d" << i+1 << " = " << decimal32ToBinary(di) << endl;
-        // cout << "concated: " << decimal64ToBinary(concatKey(ci, di))) << endl;
-        // cout << "permuated: " << decimal64ToBinary(ki) << endl;
-        // cout << endl;
-
-        uint32_t tmp_r = ri;
-        ri = li;
-        li = processRi(li, tmp_r, ki);
-        // cout << "r" << i+1 << ": " << decimal32ToBinary(ri) << endl;
-
-        if(i == 0) {
-            // cout << "l16: " << decimal32ToBinary(li) << "\nr16: " << decimal32ToBinary(ri) << endl;
-            plain |= (uint64_t)(ri);
-            plain |= ((uint64_t)(li) << 32);
-            plain = applyInvP(plain);
-            // cout << "ciphered: " << decimal64ToBinary(ciphered) << endl;
-        }
-    }
-    return plain;
-
 }
 
 int main() {
     uint64_t plain = 0x123456789ABCDEF;
     uint64_t key = 0x133457799BBCDFF1;
-    uint64_t encrypted = encrypt(plain, key);
-    uint64_t decrypted = decrypt(encrypted, key);
-    
+    uint64_t encrypted = encrypt_decrypt(plain, key, true);
+    uint64_t decrypted = encrypt_decrypt(encrypted, key, false);
+
     cout << "plain: " << std::hex << plain << endl;
     cout << "encrypted: " << std::hex << encrypted << endl;
     cout << "decrypted: " << std::hex << decrypted;
